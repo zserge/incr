@@ -1,6 +1,10 @@
 package incr
 
-import "github.com/clarkduvall/hyperloglog"
+import (
+	"hash/fnv"
+
+	"github.com/clarkduvall/hyperloglog"
+)
 
 // You may change these to 64-bit values, but it will take more memory per event
 type (
@@ -100,26 +104,73 @@ func (m *historyMeter) Data() []EventData {
 
 // History meter with HyperLogLog++ counter
 type hllMeter struct {
-	data []struct {
-		sum   Value
-		count Int
-		uniq  Int
-	}
+	data   []uniqcounter
 	index  Int
+	start  Time
 	period Time
 	hll    *hyperloglog.HyperLogLogPlus
 }
+type uniqcounter struct {
+	counter
+	unique Int
+}
 
 func newHLLMeter(period Time, backlog int) *hllMeter {
-	return &hllMeter{}
+	return &hllMeter{
+		data:   make([]uniqcounter, backlog, backlog),
+		period: period,
+		start:  0,
+		index:  0,
+	}
 }
 
 func (m *hllMeter) Add(t Time, value Value, sender string) {
-
+	// Number of unique senders for older events is already stored as a single
+	// number, so it can't be adjusted
+	// That's why we process only newer events
+	if t >= m.start {
+		for m.start < t {
+			m.index = (m.index + 1) % Int(len(m.data))
+			m.start = m.start + m.period
+			m.data[m.index].count = 0
+			m.data[m.index].sum = 0
+			m.data[m.index].unique = 0
+			m.hll = nil
+		}
+		m.data[m.index].count++
+		m.data[m.index].sum += value
+		if sender != "" {
+			if m.hll == nil {
+				m.hll, _ = hyperloglog.NewPlus(7)
+			}
+			h := fnv.New64a()
+			h.Write([]byte(sender))
+			m.hll.Add(h)
+		}
+		// FIXME This might be too slow, we should call Count() only when going to
+		// the next time frame
+		if m.hll != nil {
+			m.data[m.index].unique = Int(m.hll.Count())
+		}
+	}
 }
 
 func (m *hllMeter) Data() []EventData {
-	return []EventData{}
+	e := []EventData{}
+	for i := 0; i < len(m.data); i++ {
+		index := (int(m.index) + len(m.data) - i) % len(m.data)
+		t := m.start - Time(i)*m.period
+		if t < 0 {
+			break
+		}
+		e = append(e, EventData{
+			T:      t,
+			Sum:    m.data[index].sum,
+			Count:  m.data[index].count,
+			Unique: m.data[index].unique,
+		})
+	}
+	return e
 }
 
 // Aggregation of different meters per event

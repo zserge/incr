@@ -84,3 +84,17 @@ func TestHistoryMeter(t *testing.T) {
 		t.Error(d)
 	}
 }
+
+func TestHLLMeter(t *testing.T) {
+	m := newHLLMeter(1, 5)
+	m.Add(1, 10, "foo")
+	m.Add(1, 20, "bar")
+	m.Add(1, 20, "baz")
+	m.Add(1, 20, "baz")
+	m.Add(2, 0, "foo")
+	m.Add(2, 0, "bar")
+	m.Add(4, 0, "bar")
+	if d := m.Data(); d[0].Unique != 1 || d[2].Unique != 2 || d[3].Unique != 3 {
+		t.Error(d)
+	}
+}
