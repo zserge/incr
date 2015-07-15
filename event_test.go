@@ -117,11 +117,22 @@ func TestEvent(t *testing.T) {
 		t.Error(e.Data(0))
 	}
 
-	// Check live, should be
+	// Check live
 	if !reflect.DeepEqual(e.Data(LiveDuration), []EventData{{T: LiveDuration, Sum: 3, Count: 2}, {T: 0, Sum: 6, Count: 4}}) {
 		t.Error(e.Data(LiveDuration))
 	}
-	// TODO: test whole event
+	// Check hourly
+	if !reflect.DeepEqual(e.Data(HourlyDuration), []EventData{{T: 0, Sum: 9, Count: 6}}) {
+		t.Error(e.Data(LiveDuration))
+	}
+	// Check daily
+	if !reflect.DeepEqual(e.Data(DailyDuration), []EventData{{T: 0, Sum: 9, Count: 6, Unique: 3}}) {
+		t.Error(e.Data(DailyDuration))
+	}
+	// Check weekly
+	if !reflect.DeepEqual(e.Data(WeeklyDuration), []EventData{{T: 0, Sum: 9, Count: 6, Unique: 3}}) {
+		t.Error(e.Data(WeeklyDuration))
+	}
 }
 
 func TestEventGob(t *testing.T) {

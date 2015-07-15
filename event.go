@@ -145,6 +145,7 @@ func newHistoryMeter(period Time, backlog int) *historyMeter {
 	return &historyMeter{
 		data:   make([]totalMeter, backlog, backlog),
 		period: period,
+		start:  -1,
 		index:  0,
 	}
 }
@@ -161,6 +162,10 @@ func (m *historyMeter) Add(t Time, value Value, sender string) {
 			}
 		}
 	} else {
+		if m.start < 0 {
+			// Special case: event is not initialized at all
+			m.start = (t / m.period) * m.period
+		}
 		for m.start+m.period-1 < t {
 			m.index = (m.index + 1) % size
 			m.start = m.start + m.period
@@ -220,7 +225,7 @@ func newHLLMeter(period Time, backlog int, precision byte) *hllMeter {
 		data:      make([]uniqcounter, backlog, backlog),
 		precision: precision,
 		period:    period,
-		start:     0,
+		start:     -1,
 		index:     0,
 	}
 }
@@ -230,7 +235,11 @@ func (m *hllMeter) Add(t Time, value Value, sender string) {
 	// number, so it can't be adjusted
 	// That's why we process only newer events
 	if t >= m.start {
-		for m.start < t {
+		if m.start < 0 {
+			// Special case: event is not initialized at all
+			m.start = (t / m.period) * m.period
+		}
+		for m.start+m.period-1 < t {
 			m.index = (m.index + 1) % Int(len(m.data))
 			m.start = m.start + m.period
 			m.data[m.index].count = 0
