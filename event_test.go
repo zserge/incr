@@ -1,6 +1,8 @@
 package incr
 
 import (
+	"fmt"
+	"math/rand"
 	"reflect"
 	"testing"
 	"time"
@@ -86,7 +88,7 @@ func TestHistoryMeter(t *testing.T) {
 }
 
 func TestHLLMeter(t *testing.T) {
-	m := newHLLMeter(1, 5)
+	m := newHLLMeter(1, 5, 8)
 	m.Add(1, 10, "foo")
 	m.Add(1, 20, "bar")
 	m.Add(1, 20, "baz")
@@ -96,5 +98,51 @@ func TestHLLMeter(t *testing.T) {
 	m.Add(4, 0, "bar")
 	if d := m.Data(); d[0].Unique != 1 || d[2].Unique != 2 || d[3].Unique != 3 {
 		t.Error(d)
+	}
+}
+
+func TestEvent(t *testing.T) {
+	e := NewEvent()
+	e.Add(0, 1, "foo")
+	e.Add(0, 1, "bar")
+	e.Add(1, 4, "foo")
+	e.Add(2, 0, "baz")
+	e.Add(LiveDuration, 1, "baz")
+	e.Add(LiveDuration+1, 2, "baz")
+
+	// Check total
+	if !reflect.DeepEqual(e.Data(0), []EventData{{Sum: 9, Count: 6}}) {
+		t.Error(e.Data(0))
+	}
+
+	// Check live, should be
+	if !reflect.DeepEqual(e.Data(LiveDuration), []EventData{{T: LiveDuration, Sum: 3, Count: 2}, {T: 0, Sum: 6, Count: 4}}) {
+		t.Error(e.Data(LiveDuration))
+	}
+	// TODO: test whole event
+}
+
+func BenchmarkEvent(b *testing.B) {
+	e := NewEvent()
+	for i := 0; i < b.N; i++ {
+		e.Add(Time(rand.Int()%(DailyDuration)), Value(rand.Float32()), "")
+	}
+}
+
+func BenchmarkEventHLL(b *testing.B) {
+	e := NewEvent()
+	for i := 0; i < b.N; i++ {
+		e.Add(Time(rand.Int()%(DailyDuration)), Value(rand.Float32()), fmt.Sprintf("user%d", rand.Int()%10000))
+	}
+}
+
+func BenchmarkEventData(b *testing.B) {
+	e := NewEvent()
+	for i := 0; i < 1000; i++ {
+		e.Add(Time(rand.Int()%(DailyDuration)), Value(rand.Float32()), "")
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		e.Data(LiveDuration)
 	}
 }

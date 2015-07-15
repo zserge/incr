@@ -21,6 +21,69 @@ type EventData struct {
 	Unique Int   `json:"unique"` // How many unique clients changed the event
 }
 
+// Aggregation of different meters per event
+const (
+	Total = iota
+	Live
+	Hourly
+	Daily
+	Weekly
+
+	NumMeters
+
+	LiveCount    = 10
+	LiveDuration = 10 // 10 seconds
+
+	HourlyCount    = 7
+	HourlyDuration = 60 * 60 * 4 // 4 hours
+
+	DailyCount        = 7
+	DailyDuration     = 60 * 60 * 24 // 1 day
+	DailyHLLPrecision = 7            // 2^7 buckets, 5..7% error
+
+	WeeklyCount        = 4
+	WeeklyDuration     = 60 * 60 * 24 * 7 // 1 week
+	WeeklyHLLPrecision = 8                // 2^8 buckets, 3..5% error
+)
+
+//
+// Event is a collection of meters for different time frames with different logic
+//
+type Event [NumMeters]meter
+
+func NewEvent() Event {
+	return [NumMeters]meter{
+		&totalMeter{},
+		newHistoryMeter(LiveDuration, LiveCount),
+		newHistoryMeter(HourlyDuration, HourlyCount),
+		newHLLMeter(DailyDuration, DailyCount, DailyHLLPrecision),
+		newHLLMeter(WeeklyDuration, WeeklyCount, WeeklyHLLPrecision),
+	}
+}
+
+// Record data in each meter
+func (e *Event) Add(t Time, value Value, sender string) {
+	for _, m := range e {
+		m.Add(t, value, sender)
+	}
+}
+
+// Return data from the most precise meter holding the given time
+func (e *Event) Data(t Time) []EventData {
+	switch {
+	case t <= 0:
+		return e[Total].Data()
+	case t <= LiveDuration:
+		return e[Live].Data()
+	case t <= HourlyDuration:
+		return e[Hourly].Data()
+	case t <= DailyDuration:
+		return e[Daily].Data()
+	default:
+		return e[Weekly].Data()
+	}
+}
+
 // Meter interface: can accumulate numerical values and report aggregated data
 type meter interface {
 	Add(t Time, value Value, sender string)
@@ -74,7 +137,7 @@ func (m *historyMeter) Add(t Time, value Value, sender string) {
 			}
 		}
 	} else {
-		for m.start < t {
+		for m.start+m.period-1 < t {
 			m.index = (m.index + 1) % size
 			m.start = m.start + m.period
 			m.data[m.index].count = 0
@@ -108,19 +171,22 @@ type hllMeter struct {
 	index  Int
 	start  Time
 	period Time
-	hll    *hyperloglog.HyperLogLogPlus
+
+	hll       *hyperloglog.HyperLogLogPlus
+	precision byte
 }
 type uniqcounter struct {
 	counter
 	unique Int
 }
 
-func newHLLMeter(period Time, backlog int) *hllMeter {
+func newHLLMeter(period Time, backlog int, precision byte) *hllMeter {
 	return &hllMeter{
-		data:   make([]uniqcounter, backlog, backlog),
-		period: period,
-		start:  0,
-		index:  0,
+		data:      make([]uniqcounter, backlog, backlog),
+		precision: precision,
+		period:    period,
+		start:     0,
+		index:     0,
 	}
 }
 
@@ -141,7 +207,7 @@ func (m *hllMeter) Add(t Time, value Value, sender string) {
 		m.data[m.index].sum += value
 		if sender != "" {
 			if m.hll == nil {
-				m.hll, _ = hyperloglog.NewPlus(7)
+				m.hll, _ = hyperloglog.NewPlus(m.precision)
 			}
 			h := fnv.New64a()
 			h.Write([]byte(sender))
@@ -171,62 +237,4 @@ func (m *hllMeter) Data() []EventData {
 		})
 	}
 	return e
-}
-
-// Aggregation of different meters per event
-const (
-	Total = iota
-	Live
-	Hourly
-	Daily
-	Weekly
-
-	NumMeters
-
-	LiveCount    = 10
-	LiveDuration = 10 // 10 seconds
-
-	HourlyCount    = 7
-	HourlyDuration = 60 * 60 * 4 // 4 hours
-
-	DailyCount    = 7
-	DailyDuration = 60 * 60 * 24 // 1 day
-
-	WeeklyCount    = 4
-	WeeklyDuration = 60 * 60 * 24 * 7 // 1 week
-)
-
-type Event [NumMeters]meter
-
-func NewEvent() Event {
-	return [NumMeters]meter{
-		&totalMeter{},
-		newHistoryMeter(0, 10),
-		newHistoryMeter(0, 10),
-		newHLLMeter(0, 10),
-		newHLLMeter(0, 10),
-	}
-}
-
-// Record data in each meter
-func (e *Event) Add(t Time, value Value, sender string) {
-	for _, m := range e {
-		m.Add(t, value, sender)
-	}
-}
-
-// Return data from the most precise meter holding the given time
-func (e *Event) Data(t Time) []EventData {
-	switch {
-	case t <= 0:
-		return e[Total].Data()
-	case t < LiveCount*LiveDuration:
-		return e[Live].Data()
-	case t < HourlyCount*HourlyDuration:
-		return e[Hourly].Data()
-	case t < DailyCount*DailyDuration:
-		return e[Daily].Data()
-	default:
-		return e[Weekly].Data()
-	}
 }
