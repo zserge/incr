@@ -1,6 +1,8 @@
 package incr
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -120,6 +122,26 @@ func TestEvent(t *testing.T) {
 		t.Error(e.Data(LiveDuration))
 	}
 	// TODO: test whole event
+}
+
+func TestEventGob(t *testing.T) {
+	var e2 Event
+	e1 := NewEvent()
+	for i := 0; i < 100; i++ {
+		e1.Add(Time(rand.Int()%(WeeklyDuration)), Value(rand.Float32()), "")
+	}
+
+	buf := bytes.Buffer{}
+	if err := gob.NewEncoder(&buf).Encode(e1); err != nil {
+		t.Error(err)
+	}
+	if err := gob.NewDecoder(&buf).Decode(&e2); err != nil {
+		t.Error(err)
+	}
+
+	if !reflect.DeepEqual(e1.Data(0), e2.Data(0)) {
+		t.Error("event data differs")
+	}
 }
 
 func BenchmarkEvent(b *testing.B) {

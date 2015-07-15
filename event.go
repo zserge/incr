@@ -1,9 +1,11 @@
 package incr
 
 import (
+	"bytes"
+	"encoding/gob"
 	"hash/fnv"
 
-	"github.com/clarkduvall/hyperloglog"
+	"github.com/zserge/hyperloglog"
 )
 
 // You may change these to 64-bit values, but it will take more memory per event
@@ -51,14 +53,15 @@ const (
 //
 type Event [NumMeters]meter
 
-func NewEvent() Event {
-	return [NumMeters]meter{
+func NewEvent() *Event {
+	var e Event = [NumMeters]meter{
 		&totalMeter{},
 		newHistoryMeter(LiveDuration, LiveCount),
 		newHistoryMeter(HourlyDuration, HourlyCount),
 		newHLLMeter(DailyDuration, DailyCount, DailyHLLPrecision),
 		newHLLMeter(WeeklyDuration, WeeklyCount, WeeklyHLLPrecision),
 	}
+	return &e
 }
 
 // Record data in each meter
@@ -84,10 +87,25 @@ func (e *Event) Data(t Time) []EventData {
 	}
 }
 
+func (e *Event) GobEncode() ([]byte, error) {
+	b := bytes.Buffer{}
+	enc := gob.NewEncoder(&b)
+	err := gobenc(nil, enc, e[Total], e[Live], e[Hourly], e[Daily], e[Weekly])
+	return b.Bytes(), err
+}
+
+func (e *Event) GobDecode(b []byte) error {
+	*e = *(NewEvent())
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	return gobdec(nil, dec, &e[Total], &e[Live], &e[Hourly], &e[Daily], &e[Weekly])
+}
+
 // Meter interface: can accumulate numerical values and report aggregated data
 type meter interface {
 	Add(t Time, value Value, sender string)
 	Data() []EventData
+	gob.GobEncoder
+	gob.GobDecoder
 }
 
 // "Total" meter: keeps accumulated metrics for the whole event lifespan
@@ -105,21 +123,27 @@ func (m *totalMeter) Data() []EventData {
 	return []EventData{{Sum: m.sum, Count: m.count}}
 }
 
+func (m *totalMeter) GobEncode() ([]byte, error) {
+	buf := bytes.Buffer{}
+	err := gobenc(nil, gob.NewEncoder(&buf), m.sum, m.count)
+	return buf.Bytes(), err
+}
+
+func (m *totalMeter) GobDecode(b []byte) error {
+	return gobdec(nil, gob.NewDecoder(bytes.NewBuffer(b)), &m.sum, &m.count)
+}
+
 // meter with history: keeps N most recent metrics
 type historyMeter struct {
-	data   []counter
+	data   []totalMeter
 	period Time
 	start  Time
 	index  Int
 }
-type counter struct {
-	sum   Value
-	count Int
-}
 
 func newHistoryMeter(period Time, backlog int) *historyMeter {
 	return &historyMeter{
-		data:   make([]counter, backlog, backlog),
+		data:   make([]totalMeter, backlog, backlog),
 		period: period,
 		index:  0,
 	}
@@ -165,6 +189,16 @@ func (m *historyMeter) Data() []EventData {
 	return e
 }
 
+func (m *historyMeter) GobEncode() ([]byte, error) {
+	buf := bytes.Buffer{}
+	err := gobenc(nil, gob.NewEncoder(&buf), m.period, m.start, m.index, m.data)
+	return buf.Bytes(), err
+}
+
+func (m *historyMeter) GobDecode(b []byte) error {
+	return gobdec(nil, gob.NewDecoder(bytes.NewBuffer(b)), &m.period, &m.start, &m.index, &m.data)
+}
+
 // History meter with HyperLogLog++ counter
 type hllMeter struct {
 	data   []uniqcounter
@@ -176,7 +210,8 @@ type hllMeter struct {
 	precision byte
 }
 type uniqcounter struct {
-	counter
+	sum    Value
+	count  Int
 	unique Int
 }
 
@@ -237,4 +272,51 @@ func (m *hllMeter) Data() []EventData {
 		})
 	}
 	return e
+}
+
+func (m *hllMeter) GobEncode() ([]byte, error) {
+	buf := bytes.Buffer{}
+	enc := gob.NewEncoder(&buf)
+	err := gobenc(nil, enc, m.index, m.start, m.period, m.precision)
+	if m.hll != nil {
+		err = gobenc(err, enc, true, m.hll)
+	} else {
+		err = gobenc(err, enc, false)
+	}
+	return buf.Bytes(), err
+}
+
+func (m *hllMeter) GobDecode(b []byte) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
+	hasHLL := false
+	err := gobdec(nil, dec, &m.index, &m.start, &m.period, &m.precision, &hasHLL)
+	if hasHLL {
+		err = gobdec(err, dec, m.hll)
+	}
+	return err
+}
+
+// Helper gob functions
+func gobenc(err error, enc *gob.Encoder, v ...interface{}) error {
+	if err != nil {
+		return err
+	}
+	for _, field := range v {
+		if err = enc.Encode(field); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func gobdec(err error, dec *gob.Decoder, v ...interface{}) error {
+	if err != nil {
+		return err
+	}
+	for _, field := range v {
+		if err = dec.Decode(field); err != nil {
+			return err
+		}
+	}
+	return nil
 }
