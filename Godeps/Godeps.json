@@ -1,0 +1,10 @@
+{
+	"ImportPath": "github.com/zserge/incr",
+	"GoVersion": "go1.5beta1",
+	"Deps": [
+		{
+			"ImportPath": "github.com/zserge/hyperloglog",
+			"Rev": "25edf14ae3ae21c6d64ab82c64dfe4a5bc7bbb6f"
+		}
+	]
+}
