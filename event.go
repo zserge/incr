@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"hash/fnv"
+	"time"
 
 	"github.com/zserge/hyperloglog"
 )
@@ -19,7 +20,7 @@ type (
 type EventData struct {
 	T      Time  `json:"time"`   // Unix timestamp
 	Sum    Value `json:"sum"`    // Accumulated value
-	Count  Int   `json:"value"`  // How many times the event was modified
+	Count  Int   `json:"count"`  // How many times the event was modified
 	Unique Int   `json:"unique"` // How many unique clients changed the event
 }
 
@@ -108,6 +109,10 @@ type meter interface {
 	gob.GobDecoder
 }
 
+var Now = func() Time {
+	return Time(time.Now().Unix())
+}
+
 // "Total" meter: keeps accumulated metrics for the whole event lifespan
 type totalMeter struct {
 	sum   Value
@@ -145,8 +150,22 @@ func newHistoryMeter(period Time, backlog int) *historyMeter {
 	return &historyMeter{
 		data:   make([]totalMeter, backlog, backlog),
 		period: period,
-		start:  -1,
+		start:  0,
 		index:  0,
+	}
+}
+
+func (m *historyMeter) advanceTime(t Time) {
+	if m.start+m.period*Time(len(m.data)) < t {
+		m.start = (t / m.period) * m.period
+		m.index = 0
+		m.data = make([]totalMeter, len(m.data), len(m.data))
+	}
+	for m.start+m.period-1 < t {
+		m.index = (m.index + 1) % Int(len(m.data))
+		m.start = m.start + m.period
+		m.data[m.index].count = 0
+		m.data[m.index].sum = 0
 	}
 }
 
@@ -162,34 +181,27 @@ func (m *historyMeter) Add(t Time, value Value, sender string) {
 			}
 		}
 	} else {
-		if m.start < 0 {
-			// Special case: event is not initialized at all
-			m.start = (t / m.period) * m.period
-		}
-		for m.start+m.period-1 < t {
-			m.index = (m.index + 1) % size
-			m.start = m.start + m.period
-			m.data[m.index].count = 0
-			m.data[m.index].sum = 0
-		}
+		m.advanceTime(t)
 		m.data[m.index].count++
 		m.data[m.index].sum += value
 	}
 }
 
 func (m *historyMeter) Data() []EventData {
-	e := []EventData{}
+	m.advanceTime(Now())
+	e := make([]EventData, len(m.data), len(m.data))
 	for i := 0; i < len(m.data); i++ {
 		index := (int(m.index) + len(m.data) - i) % len(m.data)
 		t := m.start - Time(i)*m.period
 		if t < 0 {
+			e = e[:i]
 			break
 		}
-		e = append(e, EventData{
+		e[i] = EventData{
 			T:     t,
 			Sum:   m.data[index].sum,
 			Count: m.data[index].count,
-		})
+		}
 	}
 	return e
 }
@@ -225,8 +237,24 @@ func newHLLMeter(period Time, backlog int, precision byte) *hllMeter {
 		data:      make([]uniqcounter, backlog, backlog),
 		precision: precision,
 		period:    period,
-		start:     -1,
+		start:     0,
 		index:     0,
+	}
+}
+
+func (m *hllMeter) advanceTime(t Time) {
+	if m.start+m.period*Time(len(m.data)) < t {
+		m.start = (t / m.period) * m.period
+		m.index = 0
+		m.data = make([]uniqcounter, len(m.data), len(m.data))
+	}
+	for m.start+m.period-1 < t {
+		m.index = (m.index + 1) % Int(len(m.data))
+		m.start = m.start + m.period
+		m.data[m.index].count = 0
+		m.data[m.index].sum = 0
+		m.data[m.index].unique = 0
+		m.hll = nil
 	}
 }
 
@@ -235,18 +263,7 @@ func (m *hllMeter) Add(t Time, value Value, sender string) {
 	// number, so it can't be adjusted
 	// That's why we process only newer events
 	if t >= m.start {
-		if m.start < 0 {
-			// Special case: event is not initialized at all
-			m.start = (t / m.period) * m.period
-		}
-		for m.start+m.period-1 < t {
-			m.index = (m.index + 1) % Int(len(m.data))
-			m.start = m.start + m.period
-			m.data[m.index].count = 0
-			m.data[m.index].sum = 0
-			m.data[m.index].unique = 0
-			m.hll = nil
-		}
+		m.advanceTime(t)
 		m.data[m.index].count++
 		m.data[m.index].sum += value
 		if sender != "" {
@@ -266,19 +283,21 @@ func (m *hllMeter) Add(t Time, value Value, sender string) {
 }
 
 func (m *hllMeter) Data() []EventData {
-	e := []EventData{}
+	m.advanceTime(Now())
+	e := make([]EventData, len(m.data), len(m.data))
 	for i := 0; i < len(m.data); i++ {
 		index := (int(m.index) + len(m.data) - i) % len(m.data)
 		t := m.start - Time(i)*m.period
 		if t < 0 {
+			e = e[:i]
 			break
 		}
-		e = append(e, EventData{
+		e[i] = EventData{
 			T:      t,
 			Sum:    m.data[index].sum,
 			Count:  m.data[index].count,
 			Unique: m.data[index].unique,
-		})
+		}
 	}
 	return e
 }

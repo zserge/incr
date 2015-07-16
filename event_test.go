@@ -7,11 +7,14 @@ import (
 	"math/rand"
 	"reflect"
 	"testing"
-	"time"
 )
 
-func now() Time {
-	return Time(time.Now().Unix())
+var nowTime Time = 0
+
+func init() {
+	NOw = func() Time {
+		return nowTime
+	}
 }
 
 func TestTotalMeter(t *testing.T) {
@@ -34,7 +37,6 @@ func TestTotalMeter(t *testing.T) {
 
 func TestHistoryMeter(t *testing.T) {
 	m := newHistoryMeter(1, 5)
-
 	m.Add(3, 30, "")
 
 	if d := m.Data(); reflect.DeepEqual(d, []EventData{
