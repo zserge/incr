@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-type" content="text/html; charset=utf-8"/>
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0"/>
+		<title>{%=o.htmlWebpackPlugin.options.title || 'Webpack App'%}</title>
+		<link href='http://fonts.googleapis.com/css?family=Raleway:400,300,700' rel='stylesheet' type='text/css'>
+  </head>
+  <body>
+    {% for (var chunk in o.htmlWebpackPlugin.assets) { %}
+    <script src="{%=o.htmlWebpackPlugin.assets[chunk]%}"></script>
+    {% } %}
+  </body>
+</html>
