@@ -1,18 +1,23 @@
 package main
 
+//go:generate go-bindata -o=./ui.go -nomemcopy=true -pkg main -prefix=../ui/public $GOBINDATA_OPTS ../ui/public/...
+
 import (
 	"encoding/gob"
 	"log"
 	"math"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/didip/tollbooth"
-	"github.com/didip/tollbooth/thirdparty/tollbooth_gin"
+	"github.com/shirou/gopsutil/load"
+	"github.com/shirou/gopsutil/mem"
+
 	"github.com/gin-gonic/gin"
 	"github.com/zserge/incr"
 )
@@ -75,9 +80,9 @@ func staticHandler(c *gin.Context) {
 	if path == "" {
 		path = "index.html"
 	}
-	if _, err := os.Stat(filepath.Join("./ui/public", path)); err == nil {
-		c.File(filepath.Join("./ui/public", path))
-		c.Abort()
+	if buf, err := Asset(path); err == nil {
+		mimeType := mime.TypeByExtension(filepath.Ext(path))
+		c.Data(200, mimeType, buf)
 	} else {
 		c.Next()
 	}
@@ -98,12 +103,59 @@ func main() {
 	r := gin.Default()
 
 	// Limit all requests to 10 per second
-	limitHandler := tollbooth_gin.LimitHandler(tollbooth.NewLimiter(10, time.Second))
+	//limitHandler := tollbooth_gin.LimitHandler(tollbooth.NewLimiter(600, 60*time.Second))
+
+	limitHandler := func(c *gin.Context) {
+		c.Next()
+	}
 
 	persistEvents()
 
 	r.Use(staticHandler)
 	r.Use(corsHandler)
+
+	r.Use(func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		end := time.Now()
+		latency := end.Sub(start)
+
+		mutex.Lock()
+		if _, ok := db["incr:request"]; !ok {
+			db["incr:request"] = incr.NewEvent()
+		}
+		db["incr:request"].Add(incr.Time(time.Now().Unix()), incr.Value(latency), "")
+		mutex.Unlock()
+	})
+
+	go func() {
+		for _ = range time.Tick(time.Second) {
+			mutex.Lock()
+			if _, ok := db["incr:goalloc"]; !ok {
+				db["incr:goalloc"] = incr.NewEvent()
+				db["incr:memused"] = incr.NewEvent()
+				db["incr:load:1"] = incr.NewEvent()
+				db["incr:load:5"] = incr.NewEvent()
+				db["incr:load:15"] = incr.NewEvent()
+			}
+			now := incr.Time(time.Now().Unix())
+
+			var memstats runtime.MemStats
+			runtime.ReadMemStats(&memstats)
+			db["incr:goalloc"].Add(now, incr.Value(memstats.Alloc), "")
+
+			if vmem, err := mem.VirtualMemory(); err == nil {
+				db["incr:memused"].Add(now, incr.Value(vmem.Used), "")
+			}
+
+			if load, err := load.LoadAvg(); err == nil {
+				db["incr:load:1"].Add(now, incr.Value(load.Load1), "")
+				db["incr:load:5"].Add(now, incr.Value(load.Load5), "")
+				db["incr:load:15"].Add(now, incr.Value(load.Load15), "")
+			}
+			mutex.Unlock()
+		}
+	}()
 
 	r.Any("/:name/:value", limitHandler, func(c *gin.Context) {
 		name := c.Params.ByName("name")
