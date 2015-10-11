@@ -1,10 +1,7 @@
 package incr
 
 import (
-	"bytes"
-	"encoding/gob"
 	"encoding/json"
-	"log"
 	"math"
 	"testing"
 )
@@ -123,15 +120,13 @@ func TestCounterPersist(t *testing.T) {
 	c.Submit("1")
 	c.Submit("2")
 
-	b := &bytes.Buffer{}
-	enc := gob.NewEncoder(b)
-	if err := enc.Encode(c); err != nil {
+	b, err := json.Marshal(c)
+	if err != nil {
 		t.Error(err)
 	}
 
-	dec := gob.NewDecoder(b)
 	var res Counter
-	if err := dec.Decode(&res); err != nil {
+	if err := json.Unmarshal(b, &res); err != nil {
 		t.Error(err)
 	}
 
@@ -148,19 +143,13 @@ func TestGaugePersist(t *testing.T) {
 	g.Submit("7")
 	g.Submit("+5")
 
-	b := &bytes.Buffer{}
-	enc := gob.NewEncoder(b)
-	if err := enc.Encode(g); err != nil {
+	b, err := json.Marshal(g)
+	if err != nil {
 		t.Error(err)
 	}
 
-	log.Println("gob", len(b.Bytes()))
-	j, _ := json.Marshal(g)
-	log.Println(string(j), len(j))
-
-	dec := gob.NewDecoder(b)
 	var res Gauge
-	if err := dec.Decode(&res); err != nil {
+	if err := json.Unmarshal(b, &res); err != nil {
 		t.Error(err)
 	}
 
@@ -178,15 +167,13 @@ func TestSetPersist(t *testing.T) {
 		}
 	}
 
-	b := &bytes.Buffer{}
-	enc := gob.NewEncoder(b)
-	if err := enc.Encode(s); err != nil {
+	b, err := json.Marshal(s)
+	if err != nil {
 		t.Error(err)
 	}
 
-	dec := gob.NewDecoder(b)
 	var res Set
-	if err := dec.Decode(&res); err != nil {
+	if err := json.Unmarshal(b, &res); err != nil {
 		t.Error(err)
 	}
 
