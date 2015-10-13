@@ -11,17 +11,19 @@ import (
 	hll "github.com/clarkduvall/hyperloglog"
 )
 
+type MetricResult map[string]float64
+
 type Metric interface {
 	// Adds new value to the metric
 	Submit(value string) error
 	// Returns metric report
-	Report() interface{}
+	Report() MetricResult
 	// Resets metric data preparing it for the next time interval
 	Flush()
 }
 
 type Counter struct {
-	Count int64 `json:"count"`
+	Count int64
 }
 
 // Increments counter by the value specified by s.
@@ -35,8 +37,8 @@ func (c *Counter) Submit(s string) error {
 }
 
 // Reports accumulated count
-func (c *Counter) Report() interface{} {
-	return &Counter{c.Count}
+func (c *Counter) Report() MetricResult {
+	return MetricResult{"count": float64(c.Count)}
 }
 
 // The next counter is reset to zero on each flush
@@ -45,10 +47,10 @@ func (c *Counter) Flush() {
 }
 
 type Gauge struct {
-	Count int64   `json:"count"`
-	Value float64 `json:"value"`
-	Min   float64 `json:"min"`
-	Max   float64 `json:"max"`
+	Count int64
+	Value float64
+	Min   float64
+	Max   float64
 }
 
 func (g *Gauge) Submit(s string) error {
@@ -71,8 +73,13 @@ func (g *Gauge) Submit(s string) error {
 	return nil
 }
 
-func (g *Gauge) Report() interface{} {
-	return &Gauge{g.Count, g.Value, g.Min, g.Max}
+func (g *Gauge) Report() MetricResult {
+	return MetricResult{
+		"count": float64(g.Count),
+		"value": g.Value,
+		"min":   g.Min,
+		"max":   g.Max,
+	}
 }
 
 func (g *Gauge) Flush() {
@@ -84,9 +91,9 @@ type HLL struct {
 	*hll.HyperLogLogPlus
 }
 type Set struct {
-	HLL          HLL
-	CachedReport SetReport
-	Precision    byte
+	HLL       HLL
+	Count     int64
+	Precision byte
 }
 
 type SetReport struct {
@@ -95,24 +102,25 @@ type SetReport struct {
 }
 
 func (s *Set) Submit(value string) error {
-	s.CachedReport.Count++
+	s.Count++
 	h := fnv.New64a()
 	h.Write([]byte(value))
 	s.HLL.Add(h)
 	return nil
 }
 
-func (s *Set) Report() interface{} {
-	s.CachedReport.Unique = int64(s.HLL.Count())
-	return &SetReport{
-		Count:  s.CachedReport.Count,
-		Unique: s.CachedReport.Unique,
+func (s *Set) Report() MetricResult {
+	return MetricResult{
+		"count":  float64(s.Count),
+		"unique": float64(s.HLL.Count()),
 	}
 }
 
+var configHLLPrecision byte = 7
+
 func (s *Set) Flush() {
-	s.HLL.HyperLogLogPlus, _ = hll.NewPlus(s.Precision)
-	s.CachedReport = SetReport{}
+	s.HLL.HyperLogLogPlus, _ = hll.NewPlus(configHLLPrecision)
+	s.Count = 0
 }
 
 func (h *HLL) MarshalJSON() ([]byte, error) {

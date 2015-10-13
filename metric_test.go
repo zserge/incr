@@ -37,11 +37,10 @@ func TestCounter(t *testing.T) {
 		t.Error(c.Count, err)
 	}
 
-	report := c.Report()
-	if r, ok := report.(*Counter); !ok {
-		t.Error("bad report type")
-	} else if r.Count != 5 {
-		t.Error(r.Count)
+	if count, ok := c.Report()["count"]; !ok {
+		t.Error("missing count field")
+	} else if count != 5.0 {
+		t.Error(count)
 	}
 }
 
@@ -77,10 +76,8 @@ func TestGauge(t *testing.T) {
 		t.Error(g, err)
 	}
 
-	report := g.Report()
-	if r, ok := report.(*Gauge); !ok {
-		t.Error("bad report type")
-	} else if r.Value != 3.0 || r.Min != 2.0 || r.Max != 7.0 {
+	r := g.Report()
+	if r["value"] != 3.0 || r["min"] != 2.0 || r["max"] != 7.0 {
 		t.Error(r)
 	}
 	g.Flush()
@@ -100,16 +97,14 @@ func TestSet(t *testing.T) {
 			t.Error(err)
 		}
 	}
-	if r, ok := s.Report().(*SetReport); !ok {
-		t.Error("bad report type")
-	} else if r.Count != 5 || r.Unique != 3 {
+	r := s.Report()
+	if r["count"] != 5.0 || r["unique"] != 3.0 {
 		t.Error(r)
 	}
 
 	s.Flush()
-	if r, ok := s.Report().(*SetReport); !ok {
-		t.Error("bad report type")
-	} else if r.Count != 0 || r.Unique != 0 {
+	r = s.Report()
+	if r["count"] != 0.0 || r["unique"] != 0.0 {
 		t.Error(r)
 	}
 }
@@ -177,18 +172,16 @@ func TestSetPersist(t *testing.T) {
 		t.Error(err)
 	}
 
-	if r, ok := res.Report().(*SetReport); !ok {
-		t.Error("bad report type")
-	} else if r.Count != 5 || r.Unique != 3 {
+	r := res.Report()
+	if r["count"] != 5.0 || r["unique"] != 3.0 {
 		t.Error(r)
 	}
 
 	res.Submit("bar")
 	res.Submit("hello world")
 
-	if r, ok := res.Report().(*SetReport); !ok {
-		t.Error("bad report type")
-	} else if r.Count != 7 || r.Unique != 4 {
+	r = res.Report()
+	if r["count"] != 7.0 || r["unique"] != 4.0 {
 		t.Error(r)
 	}
 }
