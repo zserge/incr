@@ -20,7 +20,7 @@ var Now = time.Now
 var IncrBucket = []byte("incr")
 
 type Store interface {
-	Submit(ns, name string, value Number) error
+	Incr(ns, name string) error
 	List(ns string) ([]string, error)
 	Query(ns, name string) (*Counter, error)
 }
@@ -68,10 +68,7 @@ type Counter struct {
 	Values [][]Value
 }
 
-type Value struct {
-	Value Number `json:"n"`
-	Count int    `json:"c"`
-}
+type Value Number
 
 func NewStore(path string) (Store, error) {
 	if db, err := bolt.Open(path, 0600, &bolt.Options{Timeout: 5 * time.Second}); err != nil {
@@ -86,11 +83,11 @@ func NewStore(path string) (Store, error) {
 	}
 }
 
-func (s *store) Submit(ns, name string, value Number) error {
+func (s *store) Incr(ns, name string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(IncrBucket)
 		cnt := NewCounter(b.Get([]byte(ns + ":" + name)))
-		cnt.Submit(value)
+		cnt.Incr()
 		return b.Put([]byte(ns+":"+name), cnt.Bytes())
 	})
 }
@@ -110,8 +107,12 @@ func (s *store) List(ns string) (list []string, err error) {
 func (s *store) Query(ns, name string) (counter *Counter, err error) {
 	err = s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(IncrBucket)
-		counter = NewCounter(b.Get([]byte(ns + ":" + name)))
-		return b.Put([]byte(ns+":"+name), counter.Bytes())
+		data := b.Get([]byte(ns + ":" + name))
+		if data == nil {
+			return ErrNotFound
+		}
+		counter = NewCounter(data)
+		return nil
 	})
 	return counter, err
 }
@@ -148,10 +149,9 @@ func NewCounter(data []byte) *Counter {
 	return &c
 }
 
-func (c *Counter) Submit(n Number) {
+func (c *Counter) Incr() {
 	for i, _ := range Buckets {
-		c.Values[i][0].Value = c.Values[i][0].Value + n
-		c.Values[i][0].Count++
+		c.Values[i][0]++
 	}
 }
 

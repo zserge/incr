@@ -1,8 +1,10 @@
 package main
 
+//go:generate go get -u github.com/jteeuwen/go-bindata/...
+//go:generate go-bindata -pkg $GOPACKAGE -o assets.go -prefix ui/build ui/build/
+
 import (
 	"log"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -32,17 +34,12 @@ func corsHandler(c *gin.Context) {
 	}
 }
 
-func submit(c *gin.Context, s Store, gif bool) {
-	value := strings.TrimSuffix(c.Param("value"), ".gif")
-	if n, err := strconv.ParseFloat(value, 32); err != nil {
-		c.AbortWithStatus(400)
+func incr(c *gin.Context, s Store, gif bool) {
+	s.Incr(c.Param("ns"), strings.TrimSuffix(c.Param("counter"), ".gif"))
+	if gif {
+		c.Data(200, "image/gif", minimalGIF)
 	} else {
-		s.Submit(c.Param("ns"), c.Param("counter"), Number(n))
-		if gif {
-			c.Data(200, "image/gif", minimalGIF)
-		} else {
-			c.AbortWithStatus(200)
-		}
+		c.AbortWithStatus(200)
 	}
 }
 
@@ -54,29 +51,41 @@ func main() {
 
 	r := gin.Default()
 	r.Use(corsHandler)
-	r.GET("/:ns/:counter/:value", func(c *gin.Context) {
-		submit(c, s, true)
-	})
-	r.POST("/:ns/:counter/:value", func(c *gin.Context) {
-		submit(c, s, false)
-	})
-	r.GET("/:ns", func(c *gin.Context) {
+	r.GET("/api/:ns", func(c *gin.Context) {
 		if list, err := s.List(c.Param("ns")); err != nil {
 			c.AbortWithStatus(500)
 		} else {
 			c.JSON(200, list)
 		}
 	})
-	r.GET("/:ns/:counter", func(c *gin.Context) {
-		if counter, err := s.Query(c.Param("ns"), c.Param("counter")); err != nil {
-			log.Println(err)
-			c.AbortWithStatus(500)
+	r.GET("/api/:ns/:counter", func(c *gin.Context) {
+		if strings.HasSuffix(c.Param("counter"), ".gif") {
+			incr(c, s, true)
 		} else {
-			result := gin.H{"now": counter.Atime}
-			for i, bucket := range Buckets {
-				result[bucket.Name] = counter.Values[i]
+			if counter, err := s.Query(c.Param("ns"), c.Param("counter")); err != nil {
+				log.Println(err)
+				c.AbortWithStatus(500)
+			} else {
+				result := gin.H{"now": counter.Atime}
+				for i, bucket := range Buckets {
+					result[bucket.Name] = counter.Values[i]
+				}
+				c.JSON(200, result)
 			}
-			c.JSON(200, result)
+		}
+	})
+	r.POST("/api/:ns/:counter", func(c *gin.Context) {
+		incr(c, s, false)
+	})
+	r.NoRoute(func(c *gin.Context) {
+		log.Println(c.Request.URL.Path)
+		switch c.Request.URL.Path {
+		case "/":
+			fallthrough
+		case "/index.html":
+			c.Data(200, "text/html", MustAsset("index.html"))
+		case "/bundle.js":
+			c.Data(200, "application/javascript", MustAsset("bundle.js"))
 		}
 	})
 	r.Run() // listen and server on 0.0.0.0:8080
