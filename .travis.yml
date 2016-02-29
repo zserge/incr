@@ -4,5 +4,9 @@ go:
  - release
  - tip
 
+install:
+  - go get -v github.com/constabulary/gb/...
+
 script:
-  - go test
+  - gb build
+  - gb test -v
