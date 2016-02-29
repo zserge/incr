@@ -7,15 +7,18 @@ import injectTapEventPlugin from 'react-tap-event-plugin';
 injectTapEventPlugin();
 
 import MaterialColors from 'material-ui/lib/styles/colors';
+
 import AppBar from 'material-ui/lib/app-bar';
 import Card from 'material-ui/lib/card/card';
 import CardActions from 'material-ui/lib/card/card-actions';
 import CardHeader from 'material-ui/lib/card/card-header';
 import CardMedia from 'material-ui/lib/card/card-media';
+import CardText from 'material-ui/lib/card/card-text';
 import CardTitle from 'material-ui/lib/card/card-title';
 import FlatButton from 'material-ui/lib/flat-button';
-import CardText from 'material-ui/lib/card/card-text';
 import CircularProgress from 'material-ui/lib/circular-progress';
+import RaisedButton from 'material-ui/lib/raised-button';
+import TextField from 'material-ui/lib/text-field';
 
 import Table from 'material-ui/lib/table/table';
 import TableHeaderColumn from 'material-ui/lib/table/table-header-column';
@@ -38,13 +41,39 @@ function xhr(url, cb) {
 }
 
 class App extends React.Component {
+	constructor() {
+		super();
+		this.state = {ns: ''};
+		if (window.location.hash) {
+			this.state.ns = window.location.hash.substring(1);
+		}
+		this.setValue = (e) => {
+			this.setState({input: e.target.value});
+		};
+	}
+	redirect() {
+		window.location.hash = '#' + this.state.input;
+		this.setState({ns: this.state.input})
+	}
 	render() {
+		var content;
+		if (this.state.ns) {
+			content = <IncrCards ns={this.state.ns}/>
+		} else {
+			content = <div style={{margin: '0 auto'}}>
+				<div>Enter namespace:</div>
+				<div>
+					<TextField hintText="my-namespace" onChange={this.setValue} onEnterKeyDown={this.redirect.bind(this)}/>
+					<RaisedButton label="Go" style={{margin: '0 1em'}} onClick={this.redirect.bind(this)}/>
+				</div>
+			</div>
+		}
 		return <div>
 			<AppBar
 				showMenuIconButton={false}
 				title="Dashboard"
 				style={{marginBottom: '1em'}} />
-			<IncrCards ns="incr"/>
+			{content}
 		</div>
 	}
 }
