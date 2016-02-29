@@ -1,7 +1,6 @@
 package main
 
-//go:generate go get -u github.com/jteeuwen/go-bindata/...
-//go:generate go-bindata -pkg $GOPACKAGE -o assets.go -prefix ui/build ui/build/
+//go:generate go-bindata -pkg $GOPACKAGE -o assets.go -prefix ../../ui/build ../../ui/build/
 
 import (
 	"log"
