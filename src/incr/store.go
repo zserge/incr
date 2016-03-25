@@ -37,7 +37,6 @@ type Bucket struct {
 
 var Buckets = []Bucket{
 	{"realtime", time.Second, 60},
-	{"hour", time.Second * 60, 60},
 	{"day", time.Second * 60 * 60, 24},
 	{"month", time.Second * 60 * 60 * 24, 30},
 	{"year", time.Second * 60 * 60 * 24 * 30, 12},
@@ -48,16 +47,14 @@ func BucketIndex(bucket string) int {
 	switch bucket {
 	case "realtime":
 		return 0
-	case "hour":
-		return 1
 	case "day":
-		return 2
+		return 1
 	case "month":
-		return 3
+		return 2
 	case "year":
-		return 4
+		return 3
 	case "total":
-		return 5
+		return 4
 	default:
 		return -1
 	}
@@ -136,7 +133,7 @@ func NewCounter(data []byte) *Counter {
 
 	// Roll values
 	for i, bucket := range Buckets {
-		roll := int((c.Atime.Sub(atime)) / bucket.Period)
+		roll := int((c.Atime.Round(bucket.Period).Sub(atime.Round(bucket.Period))) / bucket.Period)
 		if roll > 0 {
 			if roll >= bucket.Size {
 				c.Values[i] = make([]Value, bucket.Size)

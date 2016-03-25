@@ -108,6 +108,96 @@ func TestStoreRolling(t *testing.T) {
 	}
 }
 
+func TestStoreHourly(t *testing.T) {
+	defer os.Remove(TestDBPath)
+	s, _ := NewStore(TestDBPath)
+
+	seconds = 0
+	s.Incr("foo", "bar")
+	seconds = 5
+	s.Incr("foo", "bar")
+	seconds = 60
+	s.Incr("foo", "bar")
+	c, _ := s.Query("foo", "bar")
+	if c.Values[BucketIndex("day")][0] != 3 {
+		t.Error(c.Values[BucketIndex("day")])
+	}
+	seconds = 3600
+	s.Incr("foo", "bar")
+
+	c, _ = s.Query("foo", "bar")
+	if c.Values[BucketIndex("day")][0] != 1 {
+		t.Error(c.Values[BucketIndex("day")])
+	} else if c.Values[BucketIndex("day")][1] != 3 {
+		t.Error(c.Values[BucketIndex("day")])
+	}
+}
+
+func TestStoreDaily(t *testing.T) {
+	defer os.Remove(TestDBPath)
+	s, _ := NewStore(TestDBPath)
+
+	seconds = 0
+	s.Incr("foo", "bar")
+	seconds = 5
+	s.Incr("foo", "bar")
+	seconds = 60
+	s.Incr("foo", "bar")
+	c, _ := s.Query("foo", "bar")
+	if c.Values[BucketIndex("month")][0] != 3 {
+		t.Error(c.Values[BucketIndex("month")])
+	}
+	seconds = 3600
+	s.Incr("foo", "bar")
+
+	seconds = 24 * 3600
+	s.Incr("foo", "bar")
+
+	seconds = 48 * 3600
+	s.Incr("foo", "bar")
+	s.Incr("foo", "bar")
+
+	c, _ = s.Query("foo", "bar")
+	if c.Values[BucketIndex("month")][0] != 2 {
+		t.Error(c.Values[BucketIndex("month")])
+	} else if c.Values[BucketIndex("month")][1] != 1 {
+		t.Error(c.Values[BucketIndex("month")])
+	} else if c.Values[BucketIndex("month")][2] != 4 {
+		t.Error(c.Values[BucketIndex("month")])
+	}
+}
+
+func TestStoreMonthly(t *testing.T) {
+	defer os.Remove(TestDBPath)
+	s, _ := NewStore(TestDBPath)
+
+	seconds = 0
+	s.Incr("foo", "bar")
+	seconds = 5
+	s.Incr("foo", "bar")
+	seconds = 60
+	s.Incr("foo", "bar")
+	c, _ := s.Query("foo", "bar")
+	if c.Values[BucketIndex("year")][0] != 3 {
+		t.Error(c.Values[BucketIndex("year")])
+	}
+	seconds = 24 * 3600
+	s.Incr("foo", "bar")
+	seconds = 48 * 3600
+	s.Incr("foo", "bar")
+
+	seconds = 40 * 24 * 3600
+	s.Incr("foo", "bar")
+	s.Incr("foo", "bar")
+
+	c, _ = s.Query("foo", "bar")
+	if c.Values[BucketIndex("year")][0] != 2 {
+		t.Error(c.Values[BucketIndex("year")])
+	} else if c.Values[BucketIndex("year")][1] != 5 {
+		t.Error(c.Values[BucketIndex("year")])
+	}
+}
+
 func BenchmarkStoreIncr(b *testing.B) {
 	defer os.Remove(TestDBPath)
 	s, _ := NewStore(TestDBPath)
