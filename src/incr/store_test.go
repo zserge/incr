@@ -40,6 +40,11 @@ func TestStoreList(t *testing.T) {
 	} else if items[0] != "bar" || items[1] != "baz" || items[2] != "qux" {
 		t.Error(items)
 	}
+	if items, _ := s.List("badlist"); items == nil {
+		t.Error(items)
+	} else if len(items) != 0 {
+		t.Error(items)
+	}
 }
 
 func TestStoreQuery(t *testing.T) {

@@ -89,8 +89,9 @@ func (s *store) Incr(ns, name string) error {
 	})
 }
 
-func (s *store) List(ns string) (list []string, err error) {
-	err = s.db.View(func(tx *bolt.Tx) error {
+func (s *store) List(ns string) ([]string, error) {
+	list := []string{}
+	err := s.db.View(func(tx *bolt.Tx) error {
 		c := tx.Bucket(IncrBucket).Cursor()
 		prefix := []byte(ns + ":")
 		for k, _ := c.Seek(prefix); bytes.HasPrefix(k, prefix); k, _ = c.Next() {

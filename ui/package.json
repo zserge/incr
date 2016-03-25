@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "start": "webpack -w",
+    "start": "webpack -w -d",
     "build": "webpack"
   },
   "devDependencies": {
