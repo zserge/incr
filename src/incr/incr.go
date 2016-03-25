@@ -4,6 +4,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,10 @@ func incr(c *gin.Context, s Store, gif bool) {
 }
 
 func main() {
+	if db := os.Getenv("INCRDB"); db != "" {
+		DBPath = db
+	}
+
 	s, err := NewStore(DBPath)
 	if err != nil {
 		log.Fatal(err)
